@@ -3,9 +3,7 @@
 Import matlab formatted data 
 Ju Tian 2015.5
 """
-import scipy.io as sio
 import numpy as np
-from sklearn import linear_model
 from sklearn.preprocessing import Imputer
 from sklearn import preprocessing
 from sklearn import metrics
@@ -134,7 +132,7 @@ def weightStability(X,y,clf,N=5):
     return normalizedError
 
 #%% since the weights looks pretty stable, now look at coefficients distribution
-def weigthDistributionPlot(X,y,clf,brainAreaCode,GroupFactor):
+def weigthDistributionPlot(X,y,clf,brainArea):
     clf.fit(X,y)
     # plot fitting
     f,ax = plt.subplots(2)
@@ -149,15 +147,16 @@ def weigthDistributionPlot(X,y,clf,brainAreaCode,GroupFactor):
     ax[0].set_xticklabels([])
 
     
-    coef = clf.coef_   
-    sns.violinplot(pd.Series(coef),groupby=GroupFactor,inner='points',
-                   names=brainAreaCode,ax=ax[1])
+    coef = clf.coef_.flatten()  
+    data = {'Coeff' : pd.Series(coef),
+             'Area' : pd.Series(brainArea)}
+    sns.violinplot(x=data["Area"],y=data['Coeff'], inner='points', ax=ax[1])
     ax[1].set_ylabel('Weight')
     ax[1].yaxis.set_major_locator(MaxNLocator(4))
     return(coef)
 
 #%% 
-def subsetPredictionPlot(neuronIdx,ax,X,Weights):
+def subsetPredictionPlot(X,DA_output, Weights,neuronIdx,ax):
     subPredict= np.average(X[:,neuronIdx], axis=1,weights=Weights[neuronIdx])
     subPredict = subPredict*sum(Weights[neuronIdx])
     #plt.figure()

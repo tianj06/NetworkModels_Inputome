@@ -7,30 +7,30 @@ import scipy.io as sio
 import numpy as np
 from sklearn import linear_model
 import matplotlib.pyplot as plt
-import random
 import pandas as pd
 from RabiesDataLinearModel import *
 #%% load data
-file_name = r'D:\Dropbox (Uchida Lab)\lab\FunInputome\rabies\allIdentified\allUnitrawPSTH'
+file_name = r'C:\Users\uchidalab\Dropbox (Uchida Lab)\lab\FunInputome\NetworkModels\allUnitrawPSTH'
 d = sio.loadmat(file_name)
 psthInputs = d["rawpsthAll"]
 brainArea = d["brainArea"]
-
+brainArea = brainArea.flatten()
+temp = []
+for i in xrange(len(brainArea)):
+    temp.append(brainArea[i][0])
+brainArea = np.array(temp)
 #%% extract X and y for later fitting
-psthDA = np.nanmean(psthInputs[np.squeeze(brainArea == "DA"),:], axis=0)
-remoteUnits = (brainArea != "DA") & (brainArea != "VTA2") & (brainArea != "VTA3")
-psthInputs_remote = psthInputs[np.squeeze(remoteUnits),:]
+psthDA = np.nanmean(psthInputs[brainArea == "Dopamine",:], axis=0)
+remoteUnits = (brainArea != "Dopamine") & (brainArea != "VTA type2") & (brainArea != "VTA type3")
+psthInputs_remote = psthInputs[remoteUnits,:]
+brainAreaInputs = brainArea[remoteUnits]
 # sort input matrix by brain area
-brainAreaInputs = list()
-for i in range(124):
-    brainAreaInputs.append(brainArea[0,i][0])
-temp = pd.factorize(brainAreaInputs)
-brainAreaCode = temp[1]
-brainAreaCat = temp[0]
-sortIdx = np.argsort(np.array(brainAreaCat))
-brainAreaInputs = np.array(brainAreaInputs)[sortIdx] 
-brainAreaCat = brainAreaCat[sortIdx]
+sortIdx = np.argsort(np.array(brainAreaInputs))
+brainAreaInputs = brainAreaInputs[sortIdx]
 psthInputs_remote = psthInputs_remote[sortIdx,:] 
+# factorize brain area
+brainAreaCat, brainAreaCode = pd.factorize(brainAreaInputs)
+
 #%% preprocessing step 1: get subset of data by trial Type
 trialName = {'90%water':0, '50% reward':1, '10% reward':2, '80% airpuff':3,	
              'omission 90% water':4, 'omission 50% reward':5,	'omssion 10% reward':6,
@@ -55,8 +55,8 @@ meanError = list()
 stdError = list()
 bestSubGroup = list()
 minError = list()
-
-for i in range(1,124,5):
+Ninputs = len(brainAreaInputs);
+for i in range(1,Ninputs,5):
     (train_error,min_error_index)= bootstrp_fitting_error(All_input,DA_output,clf, n=i,N=500)         
     meanError.append(np.mean(train_error))
     stdError.append(np.std(train_error))
@@ -64,8 +64,8 @@ for i in range(1,124,5):
     minError.append(min(train_error))
     
 plt.figure()    
-plt.errorbar(range(1,124,5), meanError, stdError)
-plt.plot(range(1,124,5),minError)
+plt.errorbar(range(1,Ninputs,5), meanError, stdError)
+plt.plot(range(1,Ninputs,5),minError)
 plt.legend(['averag fit error','min fit error'])
 plt.xlabel('Number of neurons')
 plt.ylabel('Mean squared error')
@@ -90,45 +90,53 @@ for i in range(np.shape(selectedPSTH)[0]):
 # plot weight profile
 meane = list()
 stde = list()
-for i in [5,20,50,70,90]:
-    a = weightStability(All_input,DA_output, N=i)
+for i in [5,20,50,90,130]:
+    a = weightStability(All_input,DA_output, clf, N=i)
     meane.append(np.mean(a))
     stde.append(np.std(a))
 plt.figure()
 plt.bar(range(5), meane,yerr=stde)
-plt.xticks(range(5),('5', '20', '50','70','90'))
+plt.xticks(range(5),('5', '20', '50','90','130'))
 plt.ylabel('correlation coefficients of weights')
 plt.xlabel('number of neurons left out')
 
 #%% since the weights looks pretty stable, now look at coefficients distribution
 weigthDistributionPlot(All_input[:,bestSubGroup[12]],DA_output,
                        GroupFactor=brainAreaCat[bestSubGroup[12]])
+savePath = r'C:\Users\uchidalab\Dropbox (Uchida Lab)\lab\FunInputome\writing\Figures'
 
-coef = weigthDistributionPlot(All_input,DA_output,GroupFactor=brainAreaCat)
-
+coef = weigthDistributionPlot(All_input,DA_output,clf,brainAreaInputs)
+plt.savefig(savePath+"fig_final.svg")
 
 plt.figure()
 plt.hist(coef)
 plt.xlabel('Weight')
 plt.ylabel('Counts of neurons')
+
 #%% 
 trialtypeNames = ['90% W','50% W','80% Puff','OM 90% W','OM 50% W','OM 10% W'] 
 # by brain area    
 f, axes=plt.subplots(nrows=len(brainAreaCode),sharey=True)    
 for i in range(len(brainAreaCode)):
-    subsetPredictionPlot(np.array(brainAreaInputs) == brainAreaCode[i],axes[i]) 
+    subsetPredictionPlot(All_input,DA_output,coef,
+                         np.array(brainAreaInputs) == brainAreaCode[i],axes[i]) 
     axes[i].set_title( brainAreaCode[i])
     axes[i].set_xticklabels([])
+    #axes[i].set_ylim([0.0,0.4])
     if i==len(brainAreaCode)-1:
         for j in range(6):
             axes[i].text(12+j*50,-0.2,trialtypeNames[j])
-plt.show()
+plt.savefig(savePath+"\linear_model_byarea.svg")
 
 # by weights
 f, axes=plt.subplots(nrows=2,sharey=True)    
-subsetPredictionPlot(coef>0.05,axes[0]) 
+subsetPredictionPlot(All_input,DA_output,coef, coef>0.05,axes[0]) 
 axes[0].set_xticklabels([])
-subsetPredictionPlot(coef<=0.05,axes[1]) 
+plt.title('coef>0.05 n= {0}'.format(sum(coef>0.05)))
+
+subsetPredictionPlot(All_input,DA_output,coef, coef<=0.05,axes[1]) 
+plt.title('coef<=0.05 n= {}'.format(sum(coef<=0.05)))
+
 axes[1].set_xticklabels([])
 for j in range(6):
     axes[1].text(12+j*50,-0.5,trialtypeNames[j])
@@ -151,6 +159,29 @@ for i in range(np.shape(selectedPSTH)[0]):
             
 panelPSTHplotting(plotList,subtitles=titleList,xtickLabels=xtickLabelList)
 plt.show()
+#%% for each input area fit DA responses and plot the fitted result
+f, axes=plt.subplots(nrows=len(brainAreaCode),sharey=True)    
+e = []
+for i in range(len(brainAreaCode)):
+    neuronIdx = np.array(brainAreaInputs) == brainAreaCode[i]
+    X = All_input[:,neuronIdx]
+    y = DA_output
+    coef_temp = clf.fit(X,y)    
+    R2 = metrics.explained_variance_score(clf.predict(X),y) 
+    e.append(R2)
+    axes[i].plot(DA_output)
+    axes[i].plot(clf.predict(X))
+    axes[i].legend(['DA','predicted'],bbox_to_anchor=(1.25, 1.1))
+    
+    axes[i].set_title( '{0},R2={1}'.format(brainAreaCode[i],R2))
+    axes[i].set_xticklabels([])
+    if i==len(brainAreaCode)-1:
+        for j in range(6):
+            axes[i].text(12+j*50,-0.2,trialtypeNames[j])
+plt.show()
+
+plt.figure()
+plt.bar(e)
 #%% plot example psths to show the diversity of neuronal responses
 plotTrialTypes = [range(50*6,50*7), range(50),range(50,50+50)]
 tempIdx = [3,4,6,8,9,10,12,14,27,31,33,66]
