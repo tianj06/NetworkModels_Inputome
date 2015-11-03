@@ -9,8 +9,16 @@ from sklearn import linear_model
 import matplotlib.pyplot as plt
 import pandas as pd
 from RabiesDataLinearModel import *
+from matplotlib import rcParams
+
+sns.set_context("talk")
+sns.set_style("ticks")
+import matplotlib as mpl
+mpl.rcParams['pdf.fonttype'] = 42
 #%% load data
-file_name = r'C:\Users\uchidalab\Dropbox (Uchida Lab)\lab\FunInputome\NetworkModels\allUnitrawPSTH'
+file_name = r'C:\Users\uchidalab\Dropbox (Uchida Lab)\lab\FunInputome\NetworkModels\allUnitrawPSTH20ms'
+binSize = 20
+nBin = 5000/binSize
 d = sio.loadmat(file_name)
 psthInputs = d["rawpsthAll"]
 brainArea = d["brainArea"]
@@ -39,7 +47,7 @@ removeType = [2,7,8,9]
 Idx = set(trialName.values()) - set(removeType)
 RemainIndex = list()
 for i in Idx:
-    RemainIndex.extend(range(i*50,(i+1)*50)) 
+    RemainIndex.extend(range(i*nBin,(i+1)*nBin)) 
 All_input = preprocessData(psthInputs_remote.T,RemainIndex)
 psthDA = psthDA.reshape(-1,1);
 DA_output = preprocessData(psthDA,RemainIndex)
@@ -99,34 +107,81 @@ plt.bar(range(5), meane,yerr=stde)
 plt.xticks(range(5),('5', '20', '50','90','130'))
 plt.ylabel('correlation coefficients of weights')
 plt.xlabel('number of neurons left out')
+#%% leave biggest N out to look at the stability of weights
+# plot weight profile
+step = 10
+temp = All_input
+Ncycle = 10
+allCorr = np.zeros(Ncycle);
+aic = np.zeros(Ncycle);
+predictions = np.zeros((6*nBin,Ncycle))
+from scipy.stats.stats import pearsonr   
+for i in range(Ncycle):
+    clf.fit(temp,DA_output)   
+    y = clf.predict(temp)
+    predictions[:,i] = y[:,0]
+    allCorr[i] = pearsonr(y ,DA_output)[0]
+    aic[i] = computeAIC(temp,DA_output,clf)
+    w = clf.coef_
+    ind = np.argsort(np.abs(w))
+    tempN = temp.shape[1]
+    topWIdx = ind[0,:tempN-step]
+    temp = temp[:,topWIdx]
+    
+plt.figure(figsize=(4, 3))
+plt.bar(np.arange(Ncycle)*step, allCorr, width = 8 )
+plt.ylabel('correlation coefficients')
+plt.xlabel('number of neurons left out')
+sns.despine()
+
+plt.figure(figsize=(4, 3))
+plt.bar(np.arange(Ncycle)*step, aic, width = 8 )
+plt.ylabel('AIC')
+plt.xlabel('number of neurons left out')
+sns.despine()
+
+plt.figure(figsize=(6, 4.5))
+plt.plot(DA_output,linewidth = 1)
+plt.plot(predictions[:,9],linewidth = 1)
+sns.despine()
 
 #%% since the weights looks pretty stable, now look at coefficients distribution
-weigthDistributionPlot(All_input[:,bestSubGroup[12]],DA_output,
-                       GroupFactor=brainAreaCat[bestSubGroup[12]])
 savePath = r'C:\Users\uchidalab\Dropbox (Uchida Lab)\lab\FunInputome\writing\Figures'
+coef = weigthDistributionPlot(All_input,DA_output,clf,brainAreaInputs,nBin)
+sns.despine()
+plt.savefig(savePath+"/fig_final20ms.svg")
 
-coef = weigthDistributionPlot(All_input,DA_output,clf,brainAreaInputs)
-plt.savefig(savePath+"fig_final.svg")
-
-plt.figure()
+plt.figure(figsize=(4, 3))
 plt.hist(coef)
 plt.xlabel('Weight')
 plt.ylabel('Counts of neurons')
+sns.despine()
 
 #%% 
 trialtypeNames = ['90% W','50% W','80% Puff','OM 90% W','OM 50% W','OM 10% W'] 
 # by brain area    
-f, axes=plt.subplots(nrows=len(brainAreaCode),sharey=True)    
+f, axes=plt.subplots(nrows=len(brainAreaCode),sharey=False)    
+corrEachArea = np.zeros(len(brainAreaCode));
 for i in range(len(brainAreaCode)):
-    subsetPredictionPlot(All_input,DA_output,coef,
+    subPredict = subsetPredictionPlot(All_input,DA_output,coef,
                          np.array(brainAreaInputs) == brainAreaCode[i],axes[i]) 
+    corrEachArea[i] = pearsonr(subPredict,DA_output[:,0])[0]                     
     axes[i].set_title( brainAreaCode[i])
     axes[i].set_xticklabels([])
     #axes[i].set_ylim([0.0,0.4])
     if i==len(brainAreaCode)-1:
         for j in range(6):
-            axes[i].text(12+j*50,-0.2,trialtypeNames[j])
-plt.savefig(savePath+"\linear_model_byarea.svg")
+            axes[i].text(12+j*nBin,-0.2,trialtypeNames[j])
+sns.despine()
+plt.savefig(savePath+"\linear_model_byarea20ms.pdf")
+
+plt.figure(figsize = (4,3))
+plt.barh(np.arange(len(brainAreaCode)), corrEachArea)
+plt.yticks(np.arange(len(brainAreaCode))+0.5, brainAreaCode)
+plt.xlim((0,1))
+sns.despine()
+plt.xlabel('Correlation')
+plt.savefig(savePath+"\linear_model_allareas_precision.pdf")
 
 # by weights
 f, axes=plt.subplots(nrows=2,sharey=True)    
@@ -136,11 +191,60 @@ plt.title('coef>0.05 n= {0}'.format(sum(coef>0.05)))
 
 subsetPredictionPlot(All_input,DA_output,coef, coef<=0.05,axes[1]) 
 plt.title('coef<=0.05 n= {}'.format(sum(coef<=0.05)))
+sns.despine()
 
 axes[1].set_xticklabels([])
 for j in range(6):
     axes[1].text(12+j*50,-0.5,trialtypeNames[j])
 plt.show()
+
+#%%
+f,axes = plt.subplots(3,3)
+f.subplots_adjust(hspace=.5)
+plotidx = [np.arange(nBin),np.arange(nBin)+nBin,np.arange(nBin)+nBin*5]
+colors = ((0,0,1),(0.12,0.57,1),(0.5, 0.5,0.5))
+loc = [0, ]
+stepSize = 5.0/nBin
+for i in range(len(brainAreaCode)):
+    neuronIdx =  np.array(brainAreaInputs) == brainAreaCode[i]
+    subPredict= np.average(All_input[:,neuronIdx], axis=1,weights=coef[neuronIdx])
+    subPredict = subPredict*sum(coef[neuronIdx])
+    x_pos = i%3
+    y_pos = i/3
+    for j in range(3):
+        axes[x_pos,y_pos].plot(np.arange(-1,4,stepSize),subPredict[plotidx[j]], color = colors[j],linewidth = 1)                   
+    axes[x_pos,y_pos].set_title( brainAreaCode[i])
+    axes[x_pos,y_pos].yaxis.set_major_locator(MaxNLocator(3))
+
+for j in range(3):
+    axes[x_pos+1,y_pos].plot(np.arange(-1,4,stepSize),DA_output[plotidx[j]], color = colors[j],linewidth = 1)                   
+    axes[x_pos+1,y_pos].set_title('Dopamine')
+    axes[x_pos+1,y_pos].yaxis.set_major_locator(MaxNLocator(3))
+sns.despine()
+plt.savefig(savePath+"\linear_model_byarea_panel20ms.pdf")
+
+#%% remove one area at a time
+f, axes=plt.subplots(nrows=len(brainAreaCode),sharey=False)    
+corrEachArea = np.zeros(len(brainAreaCode));
+for i in range(len(brainAreaCode)):
+    subPredict = subsetPredictionPlot(All_input,DA_output,coef,
+                         np.array(brainAreaInputs) != brainAreaCode[i],axes[i]) 
+    corrEachArea[i] = pearsonr(subPredict,DA_output[:,0])[0]                     
+    axes[i].set_title( brainAreaCode[i])
+    axes[i].set_xticklabels([])
+    #axes[i].set_ylim([0.0,0.4])
+    if i==len(brainAreaCode)-1:
+        for j in range(6):
+            axes[i].text(12+j*50,-0.2,trialtypeNames[j])
+
+plt.figure(figsize = (4,3))
+plt.barh(np.arange(len(brainAreaCode)), corrEachArea)
+plt.yticks(np.arange(len(brainAreaCode))+0.5, brainAreaCode)
+plt.xlim((0,1))
+sns.despine()
+plt.xlabel('Correlation')
+plt.savefig(savePath+"\linear_model_allareas_precision.pdf")
+
 #%% plot the individual psth of all top weighted neurons
 clf.fit(All_input,DA_output)
 coef = clf.coef_
@@ -167,21 +271,27 @@ for i in range(len(brainAreaCode)):
     X = All_input[:,neuronIdx]
     y = DA_output
     coef_temp = clf.fit(X,y)    
-    R2 = metrics.explained_variance_score(clf.predict(X),y) 
+    R2 = pearsonr(clf.predict(X),y)[0] 
     e.append(R2)
-    axes[i].plot(DA_output)
-    axes[i].plot(clf.predict(X))
+    axes[i].plot(DA_output, linewidth = 1)
+    axes[i].plot(clf.predict(X), linewidth = 1)
     axes[i].legend(['DA','predicted'],bbox_to_anchor=(1.25, 1.1))
-    
-    axes[i].set_title( '{0},R2={1}'.format(brainAreaCode[i],R2))
+    axes[i].yaxis.set_major_locator(MaxNLocator(3))
+
+    axes[i].set_title( '{0},corr= {1:.2}'.format(brainAreaCode[i],R2[0]))
     axes[i].set_xticklabels([])
     if i==len(brainAreaCode)-1:
         for j in range(6):
             axes[i].text(12+j*50,-0.2,trialtypeNames[j])
-plt.show()
+sns.despine()
+plt.savefig(savePath+"\linear_model_fit_each_area20ms.pdf")
 
-plt.figure()
-plt.bar(e)
+plt.figure(figsize = (4,3))
+plt.barh(np.arange(len(brainAreaCode)), e)
+plt.yticks(np.arange(len(brainAreaCode))+0.5, brainAreaCode)
+sns.despine()
+plt.xlabel('Correlation')
+plt.savefig(savePath+"\linear_model_each_area_precision20ms.pdf")
 #%% plot example psths to show the diversity of neuronal responses
 plotTrialTypes = [range(50*6,50*7), range(50),range(50,50+50)]
 tempIdx = [3,4,6,8,9,10,12,14,27,31,33,66]

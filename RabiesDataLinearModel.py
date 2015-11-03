@@ -132,16 +132,16 @@ def weightStability(X,y,clf,N=5):
     return normalizedError
 
 #%% since the weights looks pretty stable, now look at coefficients distribution
-def weigthDistributionPlot(X,y,clf,brainArea):
+def weigthDistributionPlot(X,y,clf,brainArea,nBin):
     clf.fit(X,y)
     # plot fitting
     f,ax = plt.subplots(2)
-    ax[0].plot(clf.predict(X))
-    ax[0].plot(y)
+    ax[0].plot(clf.predict(X),linewidth = 1)
+    ax[0].plot(y,linewidth = 1)
     ax[0].legend(['DA','predicted'])
     ax[0].set_ylabel('Normalized firing rate')
     ax[0].set_title('N inputs = %d' %np.shape(X)[1])
-    ax[0].set_xticks(range(0,300,50), minor=False)
+    ax[0].set_xticks(range(0,nBin*6,nBin), minor=False)
     ax[0].xaxis.grid(True,linewidth=2)
     ax[0].yaxis.grid(None)
     ax[0].set_xticklabels([])
@@ -154,23 +154,31 @@ def weigthDistributionPlot(X,y,clf,brainArea):
     ax[1].set_ylabel('Weight')
     ax[1].yaxis.set_major_locator(MaxNLocator(4))
     return(coef)
-
+#%% compute the AIC values AIC = 2k + n ln(RSS/n) + C1
+from math import log 
+def computeAIC(X,y,clf):
+    clf.fit(X,y)   
+    y_predict = clf.predict(X)
+    RSS = sum((y_predict - y)**2)
+    n = X.shape[0]
+    AIC = 2*len(clf.coef_) + n*log(RSS/n)
+    return AIC
 #%% 
 def subsetPredictionPlot(X,DA_output, Weights,neuronIdx,ax):
     subPredict= np.average(X[:,neuronIdx], axis=1,weights=Weights[neuronIdx])
     subPredict = subPredict*sum(Weights[neuronIdx])
     #plt.figure()
-    ax.plot(DA_output*abs(np.sum(Weights[neuronIdx])))
-    ax.plot(subPredict)
-    ax.legend(['scaled DA','predicted'],bbox_to_anchor=(1.25, 1.1))
+    #ax.plot(DA_output*abs(np.sum(Weights[neuronIdx])),linewidth = 1)
+    ax.plot(subPredict,linewidth = 1)
+    #ax.legend(['scaled DA','predicted'],bbox_to_anchor=(1.25, 1.1))
 #    for i in range(6):
 #        ax.text(25+i*50,0.8,trialtypeNames[i])
-    ax.yaxis.set_major_locator(MaxNLocator(4))
+    ax.yaxis.set_major_locator(MaxNLocator(3))
     ax.set_xticks(range(0,300,50), minor=False)
     ax.xaxis.grid(True,linewidth=2)
     ax.yaxis.grid(None)
-    return subPredict    
-
+    return subPredict      
+    
 #%%
 def crossPredictionStability(X,y,N=5):
     subIndex = range(100)+range(50*5,50*6)
