@@ -77,7 +77,7 @@ def panelPSTHplotting(X,subtitles=[0],xtickLabels=[0]):
     N = len(X)
     W = 3
     H = N/3
-    colors = ((0.5, 0.5,0.5),(0,0,1),(0.12,0.57,1))
+    colors = ((0,0,1),(0.12,0.57,1),(0.5, 0.5,0.5))
     f,axes = plt.subplots(W,H)
     f.subplots_adjust(hspace=.5)
     
@@ -87,7 +87,7 @@ def panelPSTHplotting(X,subtitles=[0],xtickLabels=[0]):
             if plotcount<N:
                 k=0
                 for data in X[plotcount]:
-                    axes[i,j].plot(data,color=colors[k])
+                    axes[i,j].plot(data,color=colors[k],linewidth = 1)
                     axes[i,j].yaxis.set_major_locator(MaxNLocator(3))
                     k+=1
                 if len(subtitles)==N:
